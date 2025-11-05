@@ -1,0 +1,77 @@
+{
+  "_comment": "Pterodactyl Egg - Subnautica Nitrox Server (by NibNab)",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2025-11-05T00:00:00+01:00",
+  "name": "Subnautica Nitrox Server",
+  "author": "NibNab <nibnab@unified.net>",
+  "description": "Installs and runs the Nitrox multiplayer mod for Subnautica inside a .NET 9 container. Automatically installs Subnautica via SteamCMD and configures Nitrox for multiplayer use.",
+  "features": null,
+  "docker_images": {
+    "ghcr.io/pterodactyl/yolks:dotnet_9": "ghcr.io/pterodactyl/yolks:dotnet_9"
+  },
+  "file_denylist": [],
+  "startup": "./nitrox/start.sh",
+  "config": {
+    "files": "{}",
+    "startup": "{\n    \"done\": \"Server started\",\n    \"userInteraction\": []\n}",
+    "logs": "{}",
+    "stop": "stop"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\nset -euo pipefail\n\n# Install dependencies for curl & certificates\napt update -y && apt install -y curl ca-certificates unzip\n\n# Download and execute the latest Nitrox installer from GitHub\ncd /home/container\nSCRIPT_URL=\"https://raw.githubusercontent.com/NibNabbb/nitrox-ptero-test/refs/heads/main/install.sh\"\necho \"📥 Downloading Nitrox installer from GitHub...\"\ncurl -fsSL \"$SCRIPT_URL\" -o install.sh\nchmod +x install.sh\n\n# Run installer\nbash install.sh\n\n# Cleanup\nrm -f install.sh\n\necho\n echo \"✅ Nitrox installation complete!\"\n echo \"You can start the server with ./nitrox/start.sh\"\n",
+      "container": "ghcr.io/pterodactyl/installers:debian",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Server Port",
+      "description": "Port the Nitrox server will listen on (UDP).",
+      "env_variable": "SERVER_PORT",
+      "default_value": "11000",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|numeric"
+    },
+    {
+      "name": "Steam Username",
+      "description": "Steam account username used for Subnautica installation via SteamCMD.",
+      "env_variable": "STEAM_USER",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:64"
+    },
+    {
+      "name": "Steam Password",
+      "description": "Steam account password used for Subnautica installation via SteamCMD.",
+      "env_variable": "STEAM_PASS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:64"
+    },
+    {
+      "name": "Steam Guard Code",
+      "description": "Optional Steam Guard code if your account requires two-factor authentication.",
+      "env_variable": "STEAM_GUARD",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:16"
+    },
+    {
+      "name": "Subnautica Path",
+      "description": "Path to install Subnautica game files inside the container.",
+      "env_variable": "SUBNAUTICA_INSTALLATION_PATH",
+      "default_value": "/home/container/subnautica",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:255"
+    }
+  ]
+}

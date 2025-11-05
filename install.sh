@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ===== CONFIG =====
-INSTALL_DIR="${HOME}/nitrox"
+# ===== CONFIGURATION =====
+BASE_DIR="/mnt/server"
+INSTALL_DIR="${BASE_DIR}/nitrox"
 DATA_DIR="${INSTALL_DIR}/data"
-GAME_DIR="${HOME}/subnautica"
-STEAMCMD_DIR="${HOME}/steamcmd"
+GAME_DIR="${BASE_DIR}/subnautica"
+STEAMCMD_DIR="${BASE_DIR}/steamcmd"
 NITROX_URL="https://github.com/SubnauticaNitrox/Nitrox/releases/latest/download/Nitrox_1.8.0.1_linux_x64.zip"
 STEAM_APP_ID=264710
 
@@ -62,8 +63,8 @@ cat > "${INSTALL_DIR}/start.sh" <<'EOF'
 set -e
 
 PORT="${SERVER_PORT:-11000}"
-GAME_PATH="${SUBNAUTICA_INSTALLATION_PATH:-${HOME}/subnautica}"
-DATA_PATH="${HOME}/nitrox/data"
+GAME_PATH="${SUBNAUTICA_INSTALLATION_PATH:-/home/container/subnautica}"
+DATA_PATH="/home/container/nitrox/data"
 
 clear
 echo "======================================"
@@ -75,7 +76,9 @@ echo " Data Directory:  ${DATA_PATH}"
 echo "======================================"
 echo
 
+# Export game path for Nitrox
 export SUBNAUTICA_INSTALLATION_PATH="${GAME_PATH}"
+
 cd "$(dirname "$0")"
 
 ./NitroxServer-Subnautica --nogui --port "${PORT}" --datapath "${DATA_PATH}"
