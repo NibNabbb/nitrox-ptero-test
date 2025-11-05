@@ -76,8 +76,11 @@ echo " Data Directory:  ${DATA_PATH}"
 echo "======================================"
 echo
 
-# Export game path for Nitrox
+# Export game and config paths for Nitrox
 export SUBNAUTICA_INSTALLATION_PATH="${GAME_PATH}"
+export HOME="/home/container"
+export XDG_CONFIG_HOME="/home/container/.config"
+mkdir -p "$XDG_CONFIG_HOME"
 
 cd "$(dirname "$0")"
 
