@@ -10,12 +10,19 @@ STEAMCMD_DIR="${BASE_DIR}/steamcmd"
 STEAM_APP_ID=264710
 GITHUB_REPO="SubnauticaNitrox/Nitrox"
 
-echo "===== Installing Subnautica via SteamCMD ====="
+echo "===== Installing Subnautica Nitrox Server ====="
+
+# ====== Detect Alpine & Add Bash/Apt Compat ======
+if [ -f /etc/alpine-release ]; then
+  echo "Alpine detected — installing bash and dependencies..."
+  apk add --no-cache bash curl wget unzip ca-certificates libstdc++ libc6-compat
+  ln -sf /bin/bash /usr/bin/bash
+fi
 
 # ===== VALIDATE ENVIRONMENT VARIABLES =====
 if [[ -z "${STEAM_USER:-}" || -z "${STEAM_PASS:-}" ]]; then
   echo "❌ ERROR: Missing Steam credentials."
-  echo "You must define the following environment variables in Pterodactyl:"
+  echo "You must define these environment variables in Pterodactyl:"
   echo "  STEAM_USER   = Your Steam username"
   echo "  STEAM_PASS   = Your Steam password"
   echo "Optional:"
@@ -24,14 +31,11 @@ if [[ -z "${STEAM_USER:-}" || -z "${STEAM_PASS:-}" ]]; then
 fi
 
 # ===== INSTALL DEPENDENCIES =====
-if [ -f /etc/alpine-release ]; then
-  apk add --no-cache bash wget curl ca-certificates libstdc++ libgcc unzip
-else
+if command -v apt >/dev/null 2>&1; then
   apt update -y
-  apt install -y wget curl ca-certificates lib32gcc-s1 lib32stdc++6 unzip
+  apt install -y wget curl ca-certificates lib32gcc-s1 lib32stdc++6 unzip jq >/dev/null
 fi
 
-# ===== PREPARE DIRECTORIES =====
 mkdir -p "$STEAMCMD_DIR" "$GAME_DIR" "$INSTALL_DIR" "$DATA_DIR"
 
 # ===== INSTALL STEAMCMD =====
@@ -53,45 +57,100 @@ echo "Logging into Steam and installing Subnautica..."
 
 echo "✅ Subnautica installed successfully at: $GAME_DIR"
 
-# ===== GET LATEST NITROX RELEASE =====
-echo "Fetching latest Nitrox release..."
-LATEST_RELEASE_JSON=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
-NITROX_URL=$(echo "$LATEST_RELEASE_JSON" | grep -oP '"browser_download_url":\s*"\K[^"]*linux_x64\.zip"' | head -n1)
+# ===== FIND LATEST NITROX RELEASE =====
+echo "Fetching latest Nitrox release info..."
+LATEST_JSON=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
+DOWNLOAD_URL=$(echo "$LATEST_JSON" | jq -r '.assets[] | select(.name | endswith("_linux_x64.zip")) | .browser_download_url')
 
-if [[ -z "$NITROX_URL" ]]; then
-  echo "❌ Could not find a Linux x64 build for Nitrox. Check the GitHub release page."
+if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
+  echo "❌ Could not find Nitrox _linux_x64.zip in latest release."
   exit 1
 fi
 
-echo "Downloading Nitrox from:"
-echo "  $NITROX_URL"
+echo "Found latest Nitrox release:"
+echo "  $DOWNLOAD_URL"
 
+# ===== INSTALL NITROX =====
 cd "$INSTALL_DIR"
-curl -L -o nitrox.zip "$NITROX_URL"
-unzip -o nitrox.zip >/dev/null
+echo "Downloading Nitrox..."
+curl -L -o nitrox.zip "$DOWNLOAD_URL"
+unzip -qo nitrox.zip
 rm nitrox.zip
+
+# Handle nested folder (e.g. linux-x64/)
+FIRST_DIR=$(find . -mindepth 1 -maxdepth 1 -type d | head -n 1)
+if [ -n "$FIRST_DIR" ]; then
+  mv "$FIRST_DIR"/* "$INSTALL_DIR"/
+  rm -rf "$FIRST_DIR"
+fi
 
 chmod -R +x "$INSTALL_DIR" || true
 
-# ===== CREATE CONFIG AND PATH FILES =====
-export HOME="$BASE_DIR"
-mkdir -p "$HOME/.config"
-echo "$GAME_DIR" > "$HOME/path.txt"
+# ===== CREATE CONFIGS =====
+mkdir -p "$BASE_DIR/.config"
+echo "/home/container/subnautica" > "$BASE_DIR/path.txt"
+
+if [ ! -f "$BASE_DIR/server.cfg" ]; then
+cat > "$BASE_DIR/server.cfg" <<'CFG'
+# Default Nitrox server configuration
+ServerPort=11000
+SaveInterval=120000
+MaxConnections=100
+InitialSyncTimeout=300000
+DisableConsole=False
+DisableAutoSave=False
+SaveName=MyWorld
+ServerPassword=
+AdminPassword=PleaseChangeMe
+GameMode=SURVIVAL
+SerializerMode=JSON
+DefaultPlayerPerm=PLAYER
+AutoPortForward=False
+CFG
+fi
+
+# ===== CREATE START SCRIPT =====
+cat > "${INSTALL_DIR}/start.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+
+PORT="${SERVER_PORT:-11000}"
+GAME_PATH="${SUBNAUTICA_INSTALLATION_PATH:-/home/container/subnautica}"
+DATA_PATH="/home/container/nitrox/data"
+
+echo "======================================"
+echo " Starting Nitrox Server for Subnautica"
+echo "--------------------------------------"
+echo " Port:            ${PORT}"
+echo " Game Path:       ${GAME_PATH}"
+echo " Data Directory:  ${DATA_PATH}"
+echo "======================================"
+echo
+
+export SUBNAUTICA_INSTALLATION_PATH="${GAME_PATH}"
+export HOME="/home/container"
+export XDG_CONFIG_HOME="/home/container/.config"
+mkdir -p "$XDG_CONFIG_HOME"
+
+cd "$(dirname "$0")"
+exec ./NitroxServer-Subnautica --nogui --port "${PORT}" --datapath "${DATA_PATH}"
+EOF
+
+chmod +x "${INSTALL_DIR}/start.sh"
+chmod +x "${INSTALL_DIR}/NitroxServer-Subnautica" || true
 
 # ===== COMPLETION =====
 echo
 echo "✅ Nitrox setup complete!"
+echo "Run manually with:"
+echo "  cd ${INSTALL_DIR} && ./start.sh"
 echo
-echo "For Pterodactyl startup, use the following command:"
+echo "For Pterodactyl startup command:"
+echo "  bash /home/container/nitrox/start.sh"
 echo
-echo "export HOME=/home/container && \\"
-echo "export XDG_CONFIG_HOME=/home/container/.config && \\"
-echo "mkdir -p \$XDG_CONFIG_HOME && \\"
-echo "export SUBNAUTICA_INSTALLATION_PATH=/home/container/subnautica && \\"
-echo "cd /home/container/nitrox && \\"
-echo "exec ./NitroxServer-Subnautica --nogui --port \${SERVER_PORT:-11000} --datapath ./data"
-echo
-echo "Environment variables needed:"
+echo "Environment variables:"
+echo "  SERVER_PORT=11000"
 echo "  STEAM_USER=YourSteamLogin"
 echo "  STEAM_PASS=YourSteamPassword"
 echo "  (optional) STEAM_GUARD=YourSteamGuardCode"
+echo "  SUBNAUTICA_INSTALLATION_PATH=/home/container/subnautica"
